@@ -130,12 +130,13 @@ def create_dynamics(world, points):
     valve_flange.CreateFixture(shape=valve_shape, density=10.0, friction=10.0, restitution=0.1)
     flange_top = (valve_flange.localCenter[0] - 0.5, valve_flange.localCenter[1] + 4)
     hinge_top = (valve_hinge.localCenter[0] - 0.5, valve_hinge.localCenter[1] + 0.5)
-    valve_joint = b2RevoluteJointDef(bodyA=valve_flange, bodyB=valve_hinge, localAnchorA=flange_top, localAnchorB=hinge_top)
-    valve_joint.collideConnected = False
-    valve_joint.enableMotor = True
-    valve_joint.motorSpeed = -1.0
-    valve_joint.maxMotorTorque = 1000000
-    world.CreateJoint(valve_joint)
+    valve_joint_def = b2RevoluteJointDef(bodyA=valve_flange, bodyB=valve_hinge, localAnchorA=flange_top, localAnchorB=hinge_top)
+    valve_joint_def.collideConnected = False
+    valve_joint_def.enableMotor = True
+    valve_joint_def.motorSpeed = 0.0
+    valve_joint_def.maxMotorTorque = 10000000
+    valve_joint = world.CreateJoint(valve_joint_def)
+    return valve_joint
 
 def main():
     # parser = argparse.ArgumentParser()
@@ -188,13 +189,15 @@ def main():
     for i, point in enumerate(og_points):
         points[i] = (point[0] + 5, point[1] + 5)
 
-    create_dynamics(world, points)
+    valve_joint = create_dynamics(world, points)
 
     num_leds = control.get_device_info()['number_of_led']
     print(num_leds)
     velocity_iterations = 10
     position_iterations = 10
     simulation_duration = 30  # in seconds
+    valve_active_duration = 5
+    valve_disabled_duration = 2
     movie_duration = 10  # in seconds
     sink_open_bodies = 400
     sink_close_bodies = 100
@@ -244,6 +247,19 @@ def main():
         pygame.display.flip()
         clock.tick(TARGET_FPS)
         frame = bytearray()
+        time_elapsed = i * TIME_STEP
+        # control valve
+        if time_elapsed % (valve_active_duration + valve_disabled_duration) > valve_active_duration:
+            if valve_joint.motorEnabled:
+                valve_joint.motorEnabled = False
+                # valve_joint.motorSpeed = 1.0
+                print('valve disabled')
+        else:
+            if not valve_joint.motorEnabled:
+                valve_joint.motorEnabled = True
+                valve_joint.motorSpeed = -1.0
+                # valve_joint.motorSpeed = -0.5
+                print('valve enabled')
         # if we haven't produced enough drops, produce one
         expected_drops = drops_per_second * i * TIME_STEP
         if num_drops_created < expected_drops and not sink_open:

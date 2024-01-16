@@ -13,6 +13,16 @@ TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 1200
 
+
+water_color = (0, 0, 50)
+white_color = (100, 100, 100)
+wood_color = (100, 100, 0)
+empty_color = (0, 0, 0)
+orange_color = (150, 50, 50)
+# Define the size of the squares
+square_size = 1.0  # 1 meter by 1 meter
+source_points = []
+
 # --- pygame setup ---
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
 pygame.display.set_caption('Simple pygame example')
@@ -30,12 +40,8 @@ def my_draw_circle(circle, body, fixture):
         x) for x in position], int(circle.radius * PPM))
 
 def create_dynamics(world, points):
-    # Define the size of the squares
-    square_size = 1.0  # 1 meter by 1 meter
-
-    # Find all the squares around the border of the points
     border_points = []
-    source_points = []
+    # Find all the squares around the border of the points
     for x in range(60):
         for y in range(60):
             if (x, y) in points:
@@ -45,6 +51,7 @@ def create_dynamics(world, points):
 
     started = False
     source_x = 0
+    lowest_y = 100
     for y in reversed(range(60)):
         found = False
         for bp in border_points:
@@ -53,22 +60,25 @@ def create_dynamics(world, points):
                     source_x = bp[0] + 1
                     started = True
                     found = True
+                    if y < lowest_y:
+                        lowest_y = y
                     source_points.append((source_x, y))
                     break
                 else:
                     if source_x == bp[0] + 1 and (source_x, y) in points:
+                        if y < lowest_y:
+                            lowest_y = y
                         found = True
                         source_points.append((source_x, y))
                         break
         if started and not found:
             break
 
-    positions = border_points
+    # # remove the lowest border points
+    # for bp in border_points:
+    #     if bp[1] == lowest_y:
 
-    water_color = (0, 0, 50)
-    white_color = (100, 100, 100)
-    wood_color = (100, 100, 0)
-    empty_color = (0, 0, 0)
+    positions = border_points
 
     # Create static squares
     for pos in positions:
@@ -104,6 +114,28 @@ def create_dynamics(world, points):
     center.userData = {'color': (0, 0, 0)}
     axel1.userData = {'color': wood_color}
     axel2.userData = {'color': wood_color}
+
+    valve_hinge_pos = (28, 12)
+    for body in world.bodies:
+        if body.type == b2_staticBody and body.position[0] == valve_hinge_pos[0] and body.position[1] <= valve_hinge_pos[1]:
+            world.DestroyBody(body)
+
+    # create valve
+    # valve_hinge = world.CreateBody(position=valve_hinge_pos, type=b2_staticBody, userData = {'color': orange_color})
+    valve_hinge = world.CreateBody(position=valve_hinge_pos, type=b2_staticBody, userData = {'color': orange_color})
+    valve_hinge_shape = b2PolygonShape(box=(0.5, 0.5))
+    valve_hinge.CreateFixture(shape=valve_hinge_shape)
+    valve_flange = world.CreateBody(position=(valve_hinge_pos[0], valve_hinge_pos[1] - 4), type=b2_dynamicBody, userData = {'color': wood_color})
+    valve_shape = b2PolygonShape(box=(0.5, 4))
+    valve_flange.CreateFixture(shape=valve_shape, density=10.0, friction=10.0, restitution=0.1)
+    flange_top = (valve_flange.localCenter[0] - 0.5, valve_flange.localCenter[1] + 4)
+    hinge_top = (valve_hinge.localCenter[0] - 0.5, valve_hinge.localCenter[1] + 0.5)
+    valve_joint = b2RevoluteJointDef(bodyA=valve_flange, bodyB=valve_hinge, localAnchorA=flange_top, localAnchorB=hinge_top)
+    valve_joint.collideConnected = False
+    valve_joint.enableMotor = True
+    valve_joint.motorSpeed = -1.0
+    valve_joint.maxMotorTorque = 1000000
+    world.CreateJoint(valve_joint)
 
 def main():
     # parser = argparse.ArgumentParser()

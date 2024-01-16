@@ -106,7 +106,7 @@ def create_dynamics(world, points):
     # joint_def.enableMotor = True
     # joint_def.maxMotorTorque = 1000
     # joint_def.motorSpeed = 10.0
-    world.CreateJoint(joint1_def)
+    wheel_joint = world.CreateJoint(joint1_def)
     world.CreateJoint(joint2_def)
     wood_bodies = [center]
     wood_bodies.append(axel1)
@@ -136,7 +136,7 @@ def create_dynamics(world, points):
     valve_joint_def.motorSpeed = 0.0
     valve_joint_def.maxMotorTorque = 10000000
     valve_joint = world.CreateJoint(valve_joint_def)
-    return valve_joint
+    return {'wheel': wheel_joint, 'valve': valve_joint}
 
 def main():
     # parser = argparse.ArgumentParser()
@@ -189,7 +189,7 @@ def main():
     for i, point in enumerate(og_points):
         points[i] = (point[0] + 5, point[1] + 5)
 
-    valve_joint = create_dynamics(world, points)
+    joints = create_dynamics(world, points)
 
     num_leds = control.get_device_info()['number_of_led']
     print(num_leds)
@@ -216,6 +216,7 @@ def main():
     sink_open = False
     running = True
     lowest_y = 100
+    wheel_spin = 0
     for body in world.bodies:
         if body.type == b2_staticBody and body.position[1] < lowest_y:
                 lowest_y = body.position[1]
@@ -248,18 +249,27 @@ def main():
         clock.tick(TARGET_FPS)
         frame = bytearray()
         time_elapsed = i * TIME_STEP
-        # control valve
-        if time_elapsed % (valve_active_duration + valve_disabled_duration) > valve_active_duration:
-            if valve_joint.motorEnabled:
-                valve_joint.motorEnabled = False
-                # valve_joint.motorSpeed = 1.0
+        valve_joint = joints['valve']
+        wheel_joint = joints['wheel']
+        if valve_joint.motorEnabled:
+            wheel_spin += wheel_joint.jointSpeed
+            if wheel_spin > 40:
                 print('valve disabled')
-        else:
-            if not valve_joint.motorEnabled:
-                valve_joint.motorEnabled = True
-                valve_joint.motorSpeed = -1.0
-                # valve_joint.motorSpeed = -0.5
-                print('valve enabled')
+                valve_joint.motorEnabled = False
+                wheel_spin = 0
+
+        # control valve
+        # if time_elapsed % (valve_active_duration + valve_disabled_duration) > valve_active_duration:
+        #     if valve_joint.motorEnabled:
+        #         valve_joint.motorEnabled = False
+        #         # valve_joint.motorSpeed = 1.0
+        #         print('valve disabled')
+        # else:
+        #     if not valve_joint.motorEnabled:
+        #         valve_joint.motorEnabled = True
+        #         valve_joint.motorSpeed = -1.0
+        #         # valve_joint.motorSpeed = -0.5
+        #         print('valve enabled')
         # if we haven't produced enough drops, produce one
         expected_drops = drops_per_second * i * TIME_STEP
         if num_drops_created < expected_drops and not sink_open:

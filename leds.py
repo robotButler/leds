@@ -5,8 +5,37 @@ from io import BytesIO
 from Box2D import b2World, b2PolygonShape, b2_staticBody, b2_dynamicBody, b2CircleShape, b2WeldJointDef, b2RevoluteJointDef, b2RayCastCallback
 import pygame
 from pygame.locals import (QUIT, KEYDOWN, K_ESCAPE)
+import argparse
+
+# pygame
+PPM = 20.0  # pixels per meter
+TARGET_FPS = 60
+TIME_STEP = 1.0 / TARGET_FPS
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 1200
+
+# --- pygame setup ---
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
+pygame.display.set_caption('Simple pygame example')
+clock = pygame.time.Clock()
+
+def my_draw_polygon(polygon, body, fixture):
+    vertices = [(body.transform * v) * PPM for v in polygon.vertices]
+    vertices = [(v[0], SCREEN_HEIGHT - v[1]) for v in vertices]
+    pygame.draw.polygon(screen, body.userData['color'], vertices)
+
+def my_draw_circle(circle, body, fixture):
+    position = body.transform * circle.pos * PPM
+    position = (position[0], SCREEN_HEIGHT - position[1])
+    pygame.draw.circle(screen, body.userData['color'], [int(
+        x) for x in position], int(circle.radius * PPM))
 
 def main():
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("-l", "--local", help = "local display only, no xled")
+    # args = parser.parse_args()
+    # # if called with --local arg, don't run any xled functions
+    # if not args.local:
+    
     device = xled.discover.discover()
 
     # Connect to the LED device
@@ -15,30 +44,8 @@ def main():
     print(device.ip_address)
     layout = control.get_led_layout()
 
-    # pygame
-    PPM = 10.0  # pixels per meter
-    TARGET_FPS = 60
-    TIME_STEP = 1.0 / TARGET_FPS
-    SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-
-    # --- pygame setup ---
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
-    pygame.display.set_caption('Simple pygame example')
-    clock = pygame.time.Clock()
-
-    def my_draw_polygon(polygon, body, fixture):
-        vertices = [(body.transform * v) * PPM for v in polygon.vertices]
-        vertices = [(v[0], SCREEN_HEIGHT - v[1]) for v in vertices]
-        pygame.draw.polygon(screen, body.userData['color'], vertices)
     b2PolygonShape.draw = my_draw_polygon
 
-    def my_draw_circle(circle, body, fixture):
-        position = body.transform * circle.pos * PPM
-        position = (position[0], SCREEN_HEIGHT - position[1])
-        pygame.draw.circle(screen, body.userData['color'], [int(
-            x) for x in position], int(circle.radius * PPM))
-        # Note: Python 3.x will enforce that pygame get the integers it requests,
-        #       and it will not convert from float.
     b2CircleShape.draw = my_draw_circle
 
     # Provided data
@@ -79,7 +86,6 @@ def main():
     # Find all the squares around the border of the points
     border_points = []
     source_points = []
-    sink_points = []
     for x in range(60):
         for y in range(60):
             if (x, y) in points:
@@ -110,16 +116,9 @@ def main():
     positions = border_points
 
     water_color = (0, 0, 50)
-    white_color = (155, 155, 255)
+    white_color = (100, 100, 100)
+    wood_color = (100, 100, 0)
     empty_color = (0, 0, 0)
-
-    # for y in range(60):
-    #     for x in range(60):
-    #         if (x, y) in border_points:
-    #             print('x', end='')
-    #         else:
-    #             print(' ', end='')
-    #     print('')
 
     sink_border_bodies = []
     # Create static squares
@@ -135,20 +134,17 @@ def main():
         body.CreateFixture(shape=shape, density=0.0)
 
     # create waterwheel
-    wheel_pos = (20, 34)
-    wheel_radius = 5
-    axel1 = createVoxelBodies(world, wheel_pos, 10.0, square_size/2, wheel_radius)
-    axel2 = createVoxelBodies(world, wheel_pos, 10.0, wheel_radius, square_size/2)
-    axel1center = axel1[4]
-    axel2center = axel2[4]
-    # v_fin_shape = b2PolygonShape(box=(square_size/2, wheel_radius))
-    # wheel.CreateFixture(shape=v_fin_shape, density=10.0)
-    # h_fin_shape = b2PolygonShape(box=(wheel_radius, square_size/2))
-    # wheel.CreateFixture(shape=h_fin_shape, density=10.0)
+    wheel_pos = (17, 33)
+    axel1 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
+    axel2 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
+    shape1 = b2PolygonShape(box=(5, 0.5))
+    axel1.CreateFixture(shape=shape1, density=10.0, friction=10.0, restitution=0.1)
+    shape2 = b2PolygonShape(box=(0.5, 5))
+    axel2.CreateFixture(shape=shape2, density=10.0, friction=10.0, restitution=0.1)
     center = world.CreateBody(position=wheel_pos, type=b2_staticBody)
     # create a freely rotating joint between the wheel and the center
-    joint1_def = b2RevoluteJointDef(bodyA=axel1center, bodyB=center, localAnchorA=axel1center.localCenter, localAnchorB=center.localCenter)
-    joint2_def = b2WeldJointDef(bodyA=axel2center, bodyB=axel1center, localAnchorA=axel2center.localCenter, localAnchorB=axel1center.localCenter)
+    joint1_def = b2RevoluteJointDef(bodyA=axel1, bodyB=center, localAnchorA=axel1.localCenter, localAnchorB=center.localCenter)
+    joint2_def = b2WeldJointDef(bodyA=axel2, bodyB=axel1, localAnchorA=axel2.localCenter, localAnchorB=axel1.localCenter)
     joint1_def.collideConnected = False
     joint2_def.collideConnected = False
     # joint_def.enableMotor = True
@@ -157,21 +153,17 @@ def main():
     world.CreateJoint(joint1_def)
     world.CreateJoint(joint2_def)
     wood_bodies = [center]
-    wood_bodies.extend(axel1)
-    wood_bodies.extend(axel2)
-    center.userData = {'color': (255, 255, 0)}
-    for body in axel1:
-        body.userData = {'color': (255, 255, 0)}
-    for body in axel2:
-        body.userData = {'color': (255, 255, 0)}
-    # wood_bodies = []
-
+    wood_bodies.append(axel1)
+    wood_bodies.append(axel2)
+    center.userData = {'color': (0, 0, 0)}
+    axel1.userData = {'color': wood_color}
+    axel2.userData = {'color': wood_color}
 
     num_leds = control.get_device_info()['number_of_led']
     print(num_leds)
     velocity_iterations = 10
     position_iterations = 10
-    simulation_duration = 10  # in seconds
+    simulation_duration = 30  # in seconds
     movie_duration = 10  # in seconds
     sink_open_bodies = 400
     sink_close_bodies = 100
@@ -189,6 +181,16 @@ def main():
     frames = bytearray()
     sink_open = False
     running = True
+    lowest_y = 100
+    for body in world.bodies:
+        if body.type == b2_staticBody and body.position[1] < lowest_y:
+                lowest_y = body.position[1]
+    # if num_drops > sink_open_bodies:
+    for body in world.bodies:
+        if body.position[1] <= lowest_y:
+            world.DestroyBody(body)
+            if body.type == b2_dynamicBody:
+                num_drops -= 1
     for i in range(int(simulation_duration / TIME_STEP)):
         if not running:
             break
@@ -215,12 +217,12 @@ def main():
         expected_drops = drops_per_second * i * TIME_STEP
         if num_drops_created < expected_drops and not sink_open:
             missing_drops = expected_drops - num_drops_created
-            for j in range(int(missing_drops)):
+            for _ in range(int(missing_drops)):
                 # pick a random source_point
                 s = random.choice(source_points)
                 # Define the body
                 body = world.CreateBody(position=s, type=b2_dynamicBody)
-                body.userData = {'color': white_color}
+                body.userData = {'color': water_color}
                 # Define and attach the shape
                 # create a circle
                 shape = b2CircleShape(radius=square_size/2)
@@ -229,33 +231,33 @@ def main():
                 body.linearVelocity = (random.random() * 10, random.random())
                 num_drops_created += 1
                 num_drops += 1
-        led_indexed = {k:empty_color for k in range(num_leds)}
-        if num_drops > sink_open_bodies and not sink_open:
-            print('opening sink')
-            sink_open = True
-            # destroy the sink_border_bodies
-            lowest_y = 100
-            for body in world.bodies:
-                if body.type == b2_staticBody:
-                    if body.position[1] < lowest_y:
-                        lowest_y = body.position[1]
-        if num_drops > sink_open_bodies:
-            for body in world.bodies:
-                if body.position[1] <= lowest_y:
+        led_indexed = {k: empty_color for k in range(num_leds)}
+        # if num_drops > sink_open_bodies and not sink_open:
+        #     print('opening sink')
+        #     sink_open = True
+        #     # destroy the sink_border_bodies
+        # lowest_y = 100
+        # for body in world.bodies:
+        #     if body.type == b2_staticBody and body.position[1] < lowest_y:
+        #             lowest_y = body.position[1]
+        # if num_drops > sink_open_bodies:
+        for body in world.bodies:
+            if body.position[1] <= lowest_y:
+                # world.DestroyBody(body)
+                if body.type == b2_dynamicBody:
                     world.DestroyBody(body)
-                    if body.type == b2_dynamicBody:
-                        num_drops -= 1
+                    num_drops -= 1
             # print(num_drops)
                 
-        if num_drops < sink_close_bodies and sink_open:
-            print('closing sink')
-            sink_open = False
-            for x in range(60):
-                # Define and attach the shape
-                body = world.CreateBody(position=(x, lowest_y), type=b2_staticBody)
-                body.userData = {'color': white_color}
-                shape = b2PolygonShape(box=(square_size/2, square_size/2))
-                body.CreateFixture(shape=shape, density=0.0)
+        # if num_drops < sink_close_bodies and sink_open:
+        #     print('closing sink')
+        #     sink_open = False
+        #     for x in range(60):
+        #         # Define and attach the shape
+        #         body = world.CreateBody(position=(x, lowest_y), type=b2_staticBody)
+        #         body.userData = {'color': white_color}
+        #         shape = b2PolygonShape(box=(square_size/2, square_size/2))
+        #         body.CreateFixture(shape=shape, density=0.0)
         # ray cast each coordinate in led_lookup to find objects
         # empty_count = 0
         # object_count = 0
@@ -277,37 +279,78 @@ def main():
         #             led_indexed[led_lookup[coord]] = water_color
         #     else:
         #         empty_count += 1
+        for (x, y) in points:
+            block_center = (int(x * PPM), int(SCREEN_HEIGHT - (y * PPM)))
+            colors = []
+            offset = int(square_size / 4 * PPM)
+            sample_ul = (block_center[0] - offset, block_center[1] - offset)
+            sample_ur = (block_center[0] + offset, block_center[1] - offset)
+            sample_ll = (block_center[0] - offset, block_center[1] + offset)
+            sample_lr = (block_center[0] + offset, block_center[1] + offset)
+            samples = [sample_ul, sample_ur, sample_ll, sample_lr]
+            for sample in samples:
+                c = screen.get_at(sample)
+                color = (c.r, c.g, c.b)
+                colors.append(color)
+            color = tuple(int(sum(x) / len(x)) for x in zip(*colors))
+
+            led_indexed[led_lookup[(x, y)]] = color
+
         for body in world.bodies:
             if body.type == b2_dynamicBody:
                 if body.position[1] < sink_y:
                     world.DestroyBody(body)
+                    # print('destroying body')
                     continue
-                for fixture in body.fixtures:
-                    if fixture.shape.type == 2: # polygon
-                        x0, y0 = fixture.shape.centroid
-                    else:
-                        x0, y0 = fixture.shape.pos
-                    (bodyx, bodyy) = body.position
-                    x = round(x0 + bodyx)
-                    y = round(y0 + bodyy)
-                    if (x, y) in led_lookup:
-                        num_neighbors = 0
-                        neighbors = [(i,j) for i in range(x-1, x+2) for j in range(y-1, y+2)]
-                        for n in neighbors:
-                            if n in led_lookup and led_lookup[n] in led_indexed and led_indexed[led_lookup[n]] != empty_color:
-                                num_neighbors += 1
-                        # interpolate between white and water_color based on number of neighbors
-                        interpolation = num_neighbors / 9.0
-                        # color = tuple(int(white_color[i] - ((interpolation ** 0.25) * (white_color[i] - water_color[i]))) for i in range(3))
-                        if body in wood_bodies:
-                            # wood color
-                            color = (255, 255, 0)
-                        else:
-                            color = water_color
+                # for fixture in body.fixtures:
+                #     if fixture.shape.type == 2:
+                #         x0, y0 = fixture.shape.centroid
+                #     else:
+                #         x0, y0 = fixture.shape.pos
+                #     (bodyx, bodyy) = body.position
+                #     x = round(x0 + bodyx)
+                #     y = round(y0 + bodyy)
+                #     if (x, y) in led_lookup:
+                #         num_neighbors = 0
+                #         neighbors = [(i, j) for i in range(x-1, x+2) for j in range(y-1, y+2)]
+                #         for n in neighbors:
+                #             if n in led_lookup and led_lookup[n] in led_indexed and led_indexed[led_lookup[n]] != empty_color:
+                #                 num_neighbors += 1
+                #         # interpolate between white and water_color based on number of neighbors
+                #         # interpolation = num_neighbors / 9.0
+                #         # color = tuple(int(white_color[i] - ((interpolation ** 0.25) * (white_color[i] - water_color[i]))) for i in range(3))
 
-                        color = screen.get_at((int(x * PPM), int(600 - (y * PPM))))
+                #         # sample 4 points around the center of the block
+                #         block_center = (int(x * PPM), int(SCREEN_HEIGHT - (y * PPM)))
+                #         colors = []
+                #         offset = int(square_size / 4 * PPM)
+                #         sample_ul = (block_center[0] - offset, block_center[1] - offset)
+                #         sample_ur = (block_center[0] + offset, block_center[1] - offset)
+                #         sample_ll = (block_center[0] - offset, block_center[1] + offset)
+                #         sample_lr = (block_center[0] + offset, block_center[1] + offset)
+                #         samples = [sample_ul, sample_ur, sample_ll, sample_lr]
+                #         for sample in samples:
+                #             c = screen.get_at(sample)
+                #             color = (c.r, c.g, c.b)
+                #             colors.append(color)
+                #         # color = screen.get_at((int(x * PPM), int(SCREEN_HEIGHT - (y * PPM))))
+                #         # # pick any non-black color. If multiple, pick the most common
+                #         # color_counts = {}
+                #         # for color in colors:
+                #         #     c = (color.r, color.g, color.b)
+                #         #     if c != empty_color:
+                #         #         if c not in color_counts:
+                #         #             color_counts[c] = 0
+                #         #         color_counts[c] += 1
+                #         # if len(color_counts) == 0:
+                #         #     color = empty_color
+                #         # else:
+                #         #     color = max(color_counts, key=color_counts.get)
 
-                        led_indexed[led_lookup[(x, y)]] = (color.r, color.g, color.b)
+                #         # average all 4 samples
+                #         color = tuple(int(sum(x) / len(x)) for x in zip(*colors))
+
+                #         led_indexed[led_lookup[(x, y)]] = color
         
         for i in range(num_leds):
             color = led_indexed[i]
@@ -347,36 +390,26 @@ class RaycastInterceptor(b2RayCastCallback):
     def point(self):
         return self.__point
 
-def createVoxelBodies(world, center_pos, density, w, h):
-    bodies = []
+
+def createVoxels(world, center_pos, density, w, h):
+    body = world.CreateBody(position=center_pos, type=b2_dynamicBody)
     # Divide the width and height into voxel size, create a shape for each voxel and attach it to the body
     for x in range(int(w*2)):
         for y in range(int(h*2)):
+            pos = (x - w + center_pos[0], y - h + center_pos[1])
             # Define and attach the shape
             # shape = b2PolygonShape(box=(0.5, 0.5))
-            pos = (x - w + center_pos[0], y - h + center_pos[1])
-            body = world.CreateBody(position=pos, type=b2_dynamicBody)
             shape = b2PolygonShape()
             shape.SetAsBox(0.5, 0.5)
+            # shape.m_p.Set(pos[0], pos[1])
+            shape.pos = pos
             # shape.m_p.Set(x - w/2, y - h/2)
             # shape.pos = (x - w/2, y - h/2)
-            body.CreateFixture(shape=shape, density=density)
-            bodies.append(body)
+            fixture = body.CreateFixture(shape=shape, density=density)
             # position the fixture relative to the body
-            # fixture.shape.pos.set(x - w/2, y - h/2)
-    last_body = bodies[0]
-    # create a joint between each body
-    for body in bodies[1:]:
-        pos_diff = (body.position[0] - last_body.position[0], body.position[1] - last_body.position[1])
-        diff1 = (pos_diff[0] / -2.0, pos_diff[1] / -2.0)
-        diff2 = (pos_diff[0] / 2.0, pos_diff[1] / 2.0)
-        print(diff1)
-        print(diff2)
-        joint_def = b2WeldJointDef(bodyA=last_body, bodyB=body, localAnchorA=diff2, localAnchorB=diff1)
-        joint_def.collideConnected = False
-        world.CreateJoint(joint_def)
-        last_body = body
-    return bodies
+            # fixture.shape.pos.set(pos[0], pos[1])
+    return body
+
 
 if __name__ == '__main__':
     main()  

@@ -29,6 +29,82 @@ def my_draw_circle(circle, body, fixture):
     pygame.draw.circle(screen, body.userData['color'], [int(
         x) for x in position], int(circle.radius * PPM))
 
+def create_dynamics(world, points):
+    # Define the size of the squares
+    square_size = 1.0  # 1 meter by 1 meter
+
+    # Find all the squares around the border of the points
+    border_points = []
+    source_points = []
+    for x in range(60):
+        for y in range(60):
+            if (x, y) in points:
+                continue
+            if (x + 1, y) in points or (x, y + 1) in points or (x + 1, y + 1) in points or (x - 1, y) in points or (x, y - 1) in points or (x - 1, y - 1) in points or (x + 1, y - 1) in points or (x - 1, y + 1) in points:
+                border_points.append((x, y))
+
+    started = False
+    source_x = 0
+    for y in reversed(range(60)):
+        found = False
+        for bp in border_points:
+            if bp[1] == y:
+                if source_x == 0 and (bp[0] + 1, y) in points:
+                    source_x = bp[0] + 1
+                    started = True
+                    found = True
+                    source_points.append((source_x, y))
+                    break
+                else:
+                    if source_x == bp[0] + 1 and (source_x, y) in points:
+                        found = True
+                        source_points.append((source_x, y))
+                        break
+        if started and not found:
+            break
+
+    positions = border_points
+
+    water_color = (0, 0, 50)
+    white_color = (100, 100, 100)
+    wood_color = (100, 100, 0)
+    empty_color = (0, 0, 0)
+
+    # Create static squares
+    for pos in positions:
+        # Define the body
+        body = world.CreateBody(position=pos, type=b2_staticBody)
+        body.userData = {'color': white_color}
+        # Define and attach the shape
+        shape = b2PolygonShape(box=(square_size/2, square_size/2))
+        body.CreateFixture(shape=shape, density=0.0)
+
+    # create waterwheel
+    wheel_pos = (17, 33)
+    axel1 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
+    axel2 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
+    shape1 = b2PolygonShape(box=(5, 0.5))
+    axel1.CreateFixture(shape=shape1, density=10.0, friction=10.0, restitution=0.1)
+    shape2 = b2PolygonShape(box=(0.5, 5))
+    axel2.CreateFixture(shape=shape2, density=10.0, friction=10.0, restitution=0.1)
+    center = world.CreateBody(position=wheel_pos, type=b2_staticBody)
+    # create a freely rotating joint between the wheel and the center
+    joint1_def = b2RevoluteJointDef(bodyA=axel1, bodyB=center, localAnchorA=axel1.localCenter, localAnchorB=center.localCenter)
+    joint2_def = b2WeldJointDef(bodyA=axel2, bodyB=axel1, localAnchorA=axel2.localCenter, localAnchorB=axel1.localCenter)
+    joint1_def.collideConnected = False
+    joint2_def.collideConnected = False
+    # joint_def.enableMotor = True
+    # joint_def.maxMotorTorque = 1000
+    # joint_def.motorSpeed = 10.0
+    world.CreateJoint(joint1_def)
+    world.CreateJoint(joint2_def)
+    wood_bodies = [center]
+    wood_bodies.append(axel1)
+    wood_bodies.append(axel2)
+    center.userData = {'color': (0, 0, 0)}
+    axel1.userData = {'color': wood_color}
+    axel2.userData = {'color': wood_color}
+
 def main():
     # parser = argparse.ArgumentParser()
     # parser.add_argument("-l", "--local", help = "local display only, no xled")
@@ -75,89 +151,12 @@ def main():
     # Initialize the Box2D world
     world = b2World(gravity=(0, -10), doSleep=True)
 
-    # Define the size of the squares
-    square_size = 1.0  # 1 meter by 1 meter
-
     # move all points up and to the right
     og_points = points
     for i, point in enumerate(og_points):
         points[i] = (point[0] + 5, point[1] + 5)
 
-    # Find all the squares around the border of the points
-    border_points = []
-    source_points = []
-    for x in range(60):
-        for y in range(60):
-            if (x, y) in points:
-                continue
-            if (x + 1, y) in points or (x, y + 1) in points or (x + 1, y + 1) in points or (x - 1, y) in points or (x, y - 1) in points or (x - 1, y - 1) in points or (x + 1, y - 1) in points or (x - 1, y + 1) in points:
-                border_points.append((x, y))
-
-    started = False
-    source_x = 0
-    for y in reversed(range(60)):
-        found = False
-        for bp in border_points:
-            if bp[1] == y:
-                if source_x == 0 and (bp[0] + 1, y) in points:
-                    source_x = bp[0] + 1
-                    started = True
-                    found = True
-                    source_points.append((source_x, y))
-                    break
-                else:
-                    if source_x == bp[0] + 1 and (source_x, y) in points:
-                        found = True
-                        source_points.append((source_x, y))
-                        break
-        if started and not found:
-            break
-
-    positions = border_points
-
-    water_color = (0, 0, 50)
-    white_color = (100, 100, 100)
-    wood_color = (100, 100, 0)
-    empty_color = (0, 0, 0)
-
-    sink_border_bodies = []
-    # Create static squares
-    for pos in positions:
-        # Define the body
-        body = world.CreateBody(position=pos, type=b2_staticBody)
-        body.userData = {'color': white_color}
-        if pos[1] == sink_y:
-            print(pos)
-            sink_border_bodies.append(body)
-        # Define and attach the shape
-        shape = b2PolygonShape(box=(square_size/2, square_size/2))
-        body.CreateFixture(shape=shape, density=0.0)
-
-    # create waterwheel
-    wheel_pos = (17, 33)
-    axel1 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
-    axel2 = world.CreateBody(position=wheel_pos, type=b2_dynamicBody)
-    shape1 = b2PolygonShape(box=(5, 0.5))
-    axel1.CreateFixture(shape=shape1, density=10.0, friction=10.0, restitution=0.1)
-    shape2 = b2PolygonShape(box=(0.5, 5))
-    axel2.CreateFixture(shape=shape2, density=10.0, friction=10.0, restitution=0.1)
-    center = world.CreateBody(position=wheel_pos, type=b2_staticBody)
-    # create a freely rotating joint between the wheel and the center
-    joint1_def = b2RevoluteJointDef(bodyA=axel1, bodyB=center, localAnchorA=axel1.localCenter, localAnchorB=center.localCenter)
-    joint2_def = b2WeldJointDef(bodyA=axel2, bodyB=axel1, localAnchorA=axel2.localCenter, localAnchorB=axel1.localCenter)
-    joint1_def.collideConnected = False
-    joint2_def.collideConnected = False
-    # joint_def.enableMotor = True
-    # joint_def.maxMotorTorque = 1000
-    # joint_def.motorSpeed = 10.0
-    world.CreateJoint(joint1_def)
-    world.CreateJoint(joint2_def)
-    wood_bodies = [center]
-    wood_bodies.append(axel1)
-    wood_bodies.append(axel2)
-    center.userData = {'color': (0, 0, 0)}
-    axel1.userData = {'color': wood_color}
-    axel2.userData = {'color': wood_color}
+    create_dynamics(world, points)
 
     num_leds = control.get_device_info()['number_of_led']
     print(num_leds)

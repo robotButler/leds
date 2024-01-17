@@ -9,7 +9,7 @@ import math
 
 # pygame
 PPM = 20.0  # pixels per meter
-TARGET_FPS = 60
+TARGET_FPS = 30
 TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 1200
 
@@ -27,6 +27,7 @@ source_points = []
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
 pygame.display.set_caption('Simple pygame example')
 clock = pygame.time.Clock()
+quarter = math.pi / 2.0
 
 def my_draw_polygon(polygon, body, fixture):
     vertices = [(body.transform * v) * PPM for v in polygon.vertices]
@@ -73,6 +74,9 @@ def create_dynamics(world, points):
                         break
         if started and not found:
             break
+
+    # remove lowest source point - it will be blocked by a ramp
+    del source_points[-1]
 
     # # remove the lowest border points
     # for bp in border_points:
@@ -125,6 +129,14 @@ def create_dynamics(world, points):
     ramp = world.CreateBody(position=(4.5, 12.5), type=b2_staticBody, userData={'color': wood_color})
     ramp_shape = b2PolygonShape(vertices=[(0,0), (0,5), (20,0)])
     ramp.CreateFixture(shape=ramp_shape)
+    # upper ramp
+    ramp2 = world.CreateBody(position=(8.5, 44.5), type=b2_staticBody, userData={'color': wood_color})
+    ramp_shape2 = b2PolygonShape(vertices=[(0,0), (0,1), (4,0)])
+    ramp2.CreateFixture(shape=ramp_shape2)
+    # right ramp
+    ramp3 = world.CreateBody(position=(32.5, 28.5), type=b2_staticBody, userData={'color': wood_color})
+    ramp_shape3 = b2PolygonShape(vertices=[(0,0), (0,1), (-4,0)])
+    ramp3.CreateFixture(shape=ramp_shape3)
 
     # create valve
     # valve_hinge = world.CreateBody(position=valve_hinge_pos, type=b2_staticBody, userData = {'color': orange_color})
@@ -202,7 +214,7 @@ def main():
     print(num_leds)
     velocity_iterations = 10
     position_iterations = 10
-    simulation_duration = 30  # in seconds
+    simulation_duration = 10  # in seconds
     valve_active_duration = 5
     valve_disabled_duration = 2
     movie_duration = 10  # in seconds
@@ -214,33 +226,41 @@ def main():
     num_drops = 0
     high_control.turn_off()
     high_control.turn_on()
-    high_control.set_mode('movie')
+    # high_control.set_mode('movie')
     high_control.clear_movies()
+    res = high_control.get_movies()
+    capacity = res["available_frames"] - 1
+    print(capacity)
     led_lookup = {}
     for i, point in enumerate(points):
         led_lookup[point] = i
     frames = bytearray()
-    sink_open = False
-    running = True
     lowest_y = 100
     wheel_spin = 0
+    is_flowing = True
     for body in world.bodies:
         if body.type == b2_staticBody and body.position[1] < lowest_y:
                 lowest_y = body.position[1]
-    # if num_drops > sink_open_bodies:
+    # kill the bottom layer of border
     for body in world.bodies:
         if body.position[1] <= lowest_y:
             world.DestroyBody(body)
             if body.type == b2_dynamicBody:
                 num_drops -= 1
-    for i in range(int(simulation_duration / TIME_STEP)):
-        if not running:
-            break
 
+    cycles_complete = 0
+    max_cycles = 3
+    state = 'cycling'
+    frame_idx = 0
+    movie_ids = []
+    movies = []
+    # for i in range(int(simulation_duration / TIME_STEP)):
+    while state != 'finished' and len(movies) < 8:
+        # pygame requires us to listen for events, or it won't simulate
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 # The user closed the window or pressed escape
-                running = False
+                state = 'finished'
 
         screen.fill((0, 0, 0, 0))
         # Draw the world
@@ -255,38 +275,27 @@ def main():
         pygame.display.flip()
         clock.tick(TARGET_FPS)
         frame = bytearray()
-        time_elapsed = i * TIME_STEP
+        # time_elapsed = i * TIME_STEP
         valve_joint = joints['valve']
         wheel_joint = joints['wheel']
-        wheel_spin += wheel_joint.speed
+        wheel_spin += wheel_joint.speed * TIME_STEP
         if valve_joint.motorEnabled:
             valve_joint.motorSpeed = wheel_joint.speed / -5.0
-            if wheel_spin > 1600:
+            if wheel_spin > 27 or state != 'cycling':
                 print('valve disabled')
                 valve_joint.motorEnabled = False
                 wheel_spin = 0
         else:
-            if wheel_spin > 1000:
+            if wheel_spin > 17 and state == 'cycling':
                 print('valve enabled')
+                cycles_complete += 1
                 valve_joint.motorEnabled = True
                 valve_joint.motorSpeed = 0
                 wheel_spin = 0
 
-        # control valve
-        # if time_elapsed % (valve_active_duration + valve_disabled_duration) > valve_active_duration:
-        #     if valve_joint.motorEnabled:
-        #         valve_joint.motorEnabled = False
-        #         # valve_joint.motorSpeed = 1.0
-        #         print('valve disabled')
-        # else:
-        #     if not valve_joint.motorEnabled:
-        #         valve_joint.motorEnabled = True
-        #         valve_joint.motorSpeed = -1.0
-        #         # valve_joint.motorSpeed = -0.5
-        #         print('valve enabled')
         # if we haven't produced enough drops, produce one
-        expected_drops = drops_per_second * i * TIME_STEP
-        if num_drops_created < expected_drops and not sink_open:
+        expected_drops = drops_per_second * frame_idx * TIME_STEP
+        if num_drops_created < expected_drops and is_flowing:
             missing_drops = expected_drops - num_drops_created
             for _ in range(int(missing_drops)):
                 # pick a random source_point
@@ -303,53 +312,34 @@ def main():
                 num_drops_created += 1
                 num_drops += 1
         led_indexed = {k: empty_color for k in range(num_leds)}
-        # if num_drops > sink_open_bodies and not sink_open:
-        #     print('opening sink')
-        #     sink_open = True
-        #     # destroy the sink_border_bodies
-        # lowest_y = 100
-        # for body in world.bodies:
-        #     if body.type == b2_staticBody and body.position[1] < lowest_y:
-        #             lowest_y = body.position[1]
-        # if num_drops > sink_open_bodies:
+
         for body in world.bodies:
             if body.position[1] <= lowest_y:
                 # world.DestroyBody(body)
                 if body.type == b2_dynamicBody:
                     world.DestroyBody(body)
                     num_drops -= 1
-            # print(num_drops)
-                
-        # if num_drops < sink_close_bodies and sink_open:
-        #     print('closing sink')
-        #     sink_open = False
-        #     for x in range(60):
-        #         # Define and attach the shape
-        #         body = world.CreateBody(position=(x, lowest_y), type=b2_staticBody)
-        #         body.userData = {'color': white_color}
-        #         shape = b2PolygonShape(box=(square_size/2, square_size/2))
-        #         body.CreateFixture(shape=shape, density=0.0)
-        # ray cast each coordinate in led_lookup to find objects
-        # empty_count = 0
-        # object_count = 0
-        # for idx, coord in enumerate(led_lookup):
-        #     # ray cast down
-        #     coord_dst = (coord[0] + 1, coord[1] + 1)
-        #     # print('origin' + str(coord))
-        #     # print('dst ' + str(coord_dst))
-        #     ri = RaycastInterceptor()
-        #     world.RayCast(ri, coord, coord_dst)
-        #     if ri.fixture != None:
-        #         # print(ri.fixture)
-        #         object_count += 1
-        #         if ri.fixture.body in wood_bodies:
-        #             led_indexed[led_lookup[coord]] = (255, 255, 0)
-        #         elif ri.fixture.body.type == b2_dynamicBody:
-        #             # print('water')
-        #             # print(coord)
-        #             led_indexed[led_lookup[coord]] = water_color
-        #     else:
-        #         empty_count += 1
+
+        if cycles_complete == max_cycles and state == 'cycling':
+            print('resetting')
+            state = 'resetting'
+            wheel_joint.enableLimit = True
+            wheel_joint.upperAngle = (math.floor(wheel_joint.angle / quarter) + 1) * quarter
+            wheel_joint.lowerAngle = 0
+            is_flowing = False
+        
+        if state == 'resetting':
+            print(wheel_joint.angle % quarter)
+            if wheel_joint.angle % quarter < 0.05:
+                print('draining')
+                state = 'draining'
+                wheel_joint.upperAngle = wheel_joint.angle + 0.1
+                wheel_joint.lowerAngle = wheel_joint.angle
+
+        if state == 'draining' and num_drops == 0 and wheel_joint.angle % quarter < 0.1:
+            print('finished')
+            state = 'finished'
+
         for (x, y) in points:
             block_center = (int(x * PPM), int(SCREEN_HEIGHT - (y * PPM)))
             colors = []
@@ -368,69 +358,40 @@ def main():
             led_indexed[led_lookup[(x, y)]] = color
 
         for body in world.bodies:
-            if body.type == b2_dynamicBody:
-                if body.position[1] < sink_y:
-                    world.DestroyBody(body)
-                    # print('destroying body')
-                    continue
-                # for fixture in body.fixtures:
-                #     if fixture.shape.type == 2:
-                #         x0, y0 = fixture.shape.centroid
-                #     else:
-                #         x0, y0 = fixture.shape.pos
-                #     (bodyx, bodyy) = body.position
-                #     x = round(x0 + bodyx)
-                #     y = round(y0 + bodyy)
-                #     if (x, y) in led_lookup:
-                #         num_neighbors = 0
-                #         neighbors = [(i, j) for i in range(x-1, x+2) for j in range(y-1, y+2)]
-                #         for n in neighbors:
-                #             if n in led_lookup and led_lookup[n] in led_indexed and led_indexed[led_lookup[n]] != empty_color:
-                #                 num_neighbors += 1
-                #         # interpolate between white and water_color based on number of neighbors
-                #         # interpolation = num_neighbors / 9.0
-                #         # color = tuple(int(white_color[i] - ((interpolation ** 0.25) * (white_color[i] - water_color[i]))) for i in range(3))
-
-                #         # sample 4 points around the center of the block
-                #         block_center = (int(x * PPM), int(SCREEN_HEIGHT - (y * PPM)))
-                #         colors = []
-                #         offset = int(square_size / 4 * PPM)
-                #         sample_ul = (block_center[0] - offset, block_center[1] - offset)
-                #         sample_ur = (block_center[0] + offset, block_center[1] - offset)
-                #         sample_ll = (block_center[0] - offset, block_center[1] + offset)
-                #         sample_lr = (block_center[0] + offset, block_center[1] + offset)
-                #         samples = [sample_ul, sample_ur, sample_ll, sample_lr]
-                #         for sample in samples:
-                #             c = screen.get_at(sample)
-                #             color = (c.r, c.g, c.b)
-                #             colors.append(color)
-                #         # color = screen.get_at((int(x * PPM), int(SCREEN_HEIGHT - (y * PPM))))
-                #         # # pick any non-black color. If multiple, pick the most common
-                #         # color_counts = {}
-                #         # for color in colors:
-                #         #     c = (color.r, color.g, color.b)
-                #         #     if c != empty_color:
-                #         #         if c not in color_counts:
-                #         #             color_counts[c] = 0
-                #         #         color_counts[c] += 1
-                #         # if len(color_counts) == 0:
-                #         #     color = empty_color
-                #         # else:
-                #         #     color = max(color_counts, key=color_counts.get)
-
-                #         # average all 4 samples
-                #         color = tuple(int(sum(x) / len(x)) for x in zip(*colors))
-
-                #         led_indexed[led_lookup[(x, y)]] = color
+            if body.type == b2_dynamicBody and body.position[1] < sink_y:
+                world.DestroyBody(body)
         
         for i in range(num_leds):
             color = led_indexed[i]
             frame.extend(color)
         frames.extend(frame)
-    print('made movie')
+        frame_idx += 1
+
+        if frame_idx % int(simulation_duration / TIME_STEP) == 0:
+            print('made movie')
+            movies.append(BytesIO(frames))
+            # movie_id = high_control.upload_movie(BytesIO(frames), fps=60, name=str(frame_idx), force=True)
+            # movie_ids.append(movie_id)
+            # high_control.show_movie(BytesIO(frames), fps=60)
+            frames = bytearray()
+        # for i in range(int(simulation_duration / TIME_STEP)):
     # control.set_mode('rt')
     # control.set_movies_new('asg', int(uuid.uuid1()), 'rgb_raw', num_leds, len(frames), 30)
-    high_control.show_movie(BytesIO(frames), fps=30)
+    # high_control.show_movie(BytesIO(frames), fps=60)
+    print('made last movie')
+    movies.append(BytesIO(frames))
+    movie_idx = 0
+    for movie in movies:
+        movie_name = 'waterwheel' + str(movie_idx)
+        movie_idx += 1
+        movie_id = high_control.upload_movie(movie, fps=30, name=movie_name)
+        print(movie_id)
+        movie_ids.append(movie_id)
+    # high_control.show_movie(BytesIO(frames), fps=60)
+    print(movie_ids)
+    worked = high_control.show_playlist(movie_ids)
+    print(worked)
+
     # control.set_mode('movie')
     # control.set_led_movie_config(0, len(frames), num_leds)
     # control.set_led_movie_full(frames)

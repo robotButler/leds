@@ -5,7 +5,7 @@ from io import BytesIO
 from Box2D import b2World, b2PolygonShape, b2_staticBody, b2_dynamicBody, b2CircleShape, b2WeldJointDef, b2RevoluteJointDef, b2RayCastCallback
 import pygame
 from pygame.locals import (QUIT, KEYDOWN, K_ESCAPE)
-import argparse
+import math
 
 # pygame
 PPM = 20.0  # pixels per meter
@@ -111,30 +111,37 @@ def create_dynamics(world, points):
     wood_bodies = [center]
     wood_bodies.append(axel1)
     wood_bodies.append(axel2)
-    center.userData = {'color': (0, 0, 0)}
+    center.userData = {'color': empty_color}
     axel1.userData = {'color': wood_color}
     axel2.userData = {'color': wood_color}
 
-    valve_hinge_pos = (28, 12)
+    valve_hinge_pos = (29, 12)
+    valve_length = 3.9
     for body in world.bodies:
         if body.type == b2_staticBody and body.position[0] == valve_hinge_pos[0] and body.position[1] <= valve_hinge_pos[1]:
             world.DestroyBody(body)
 
+    # create ramp
+    ramp = world.CreateBody(position=(4.5, 12.5), type=b2_staticBody, userData={'color': wood_color})
+    ramp_shape = b2PolygonShape(vertices=[(0,0), (0,5), (20,0)])
+    ramp.CreateFixture(shape=ramp_shape)
+
     # create valve
     # valve_hinge = world.CreateBody(position=valve_hinge_pos, type=b2_staticBody, userData = {'color': orange_color})
     valve_hinge = world.CreateBody(position=valve_hinge_pos, type=b2_staticBody, userData = {'color': orange_color})
-    valve_hinge_shape = b2PolygonShape(box=(0.5, 0.5))
-    valve_hinge.CreateFixture(shape=valve_hinge_shape)
-    valve_flange = world.CreateBody(position=(valve_hinge_pos[0], valve_hinge_pos[1] - 4), type=b2_dynamicBody, userData = {'color': wood_color})
-    valve_shape = b2PolygonShape(box=(0.5, 4))
+    valve_flange = world.CreateBody(position=(valve_hinge_pos[0], valve_hinge_pos[1] - valve_length), type=b2_dynamicBody, userData = {'color': wood_color})
+    valve_shape = b2PolygonShape(box=(0.5, valve_length))
     valve_flange.CreateFixture(shape=valve_shape, density=10.0, friction=10.0, restitution=0.1)
-    flange_top = (valve_flange.localCenter[0] - 0.5, valve_flange.localCenter[1] + 4)
+    flange_top = (valve_flange.localCenter[0] - 0.5, valve_flange.localCenter[1] + valve_length)
     hinge_top = (valve_hinge.localCenter[0] - 0.5, valve_hinge.localCenter[1] + 0.5)
     valve_joint_def = b2RevoluteJointDef(bodyA=valve_flange, bodyB=valve_hinge, localAnchorA=flange_top, localAnchorB=hinge_top)
     valve_joint_def.collideConnected = False
     valve_joint_def.enableMotor = True
     valve_joint_def.motorSpeed = 0.0
-    valve_joint_def.maxMotorTorque = 10000000
+    valve_joint_def.maxMotorTorque = 100000000
+    valve_joint_def.enableLimit = True
+    valve_joint_def.lowerAngle = -math.pi
+    valve_joint_def.upperAngle = 0
     valve_joint = world.CreateJoint(valve_joint_def)
     return {'wheel': wheel_joint, 'valve': valve_joint}
 
@@ -202,7 +209,7 @@ def main():
     sink_open_bodies = 400
     sink_close_bodies = 100
     speed = 0.1  # Time in seconds between frames
-    drops_per_second = 50
+    drops_per_second = 20
     num_drops_created = 0
     num_drops = 0
     high_control.turn_off()
@@ -251,11 +258,18 @@ def main():
         time_elapsed = i * TIME_STEP
         valve_joint = joints['valve']
         wheel_joint = joints['wheel']
+        wheel_spin += wheel_joint.speed
         if valve_joint.motorEnabled:
-            wheel_spin += wheel_joint.jointSpeed
-            if wheel_spin > 40:
+            valve_joint.motorSpeed = wheel_joint.speed / -5.0
+            if wheel_spin > 1600:
                 print('valve disabled')
                 valve_joint.motorEnabled = False
+                wheel_spin = 0
+        else:
+            if wheel_spin > 1000:
+                print('valve enabled')
+                valve_joint.motorEnabled = True
+                valve_joint.motorSpeed = 0
                 wheel_spin = 0
 
         # control valve

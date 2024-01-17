@@ -254,6 +254,7 @@ def main():
     frame_idx = 0
     movie_ids = []
     movies = []
+    durations = []
     # for i in range(int(simulation_duration / TIME_STEP)):
     while state != 'finished' and len(movies) < 8:
         # pygame requires us to listen for events, or it won't simulate
@@ -364,12 +365,18 @@ def main():
         for i in range(num_leds):
             color = led_indexed[i]
             frame.extend(color)
+        high_control.show_rt_frame(BytesIO(frame))
         frames.extend(frame)
         frame_idx += 1
 
         if frame_idx % int(simulation_duration / TIME_STEP) == 0:
             print('made movie')
-            movies.append(BytesIO(frames))
+            durations.append(simulation_duration)
+            movie = BytesIO(frames)
+            numframes = movie.seek(0, 2) // (high_control.led_bytes * high_control.num_leds)
+            print(numframes)
+            movie.seek(0)
+            movies.append(movie)
             # movie_id = high_control.upload_movie(BytesIO(frames), fps=60, name=str(frame_idx), force=True)
             # movie_ids.append(movie_id)
             # high_control.show_movie(BytesIO(frames), fps=60)
@@ -380,13 +387,16 @@ def main():
     # high_control.show_movie(BytesIO(frames), fps=60)
     print('made last movie')
     movies.append(BytesIO(frames))
+    duration = (frame_idx % int(simulation_duration / TIME_STEP)) * TIME_STEP
+    durations.append(duration)
     movie_idx = 0
     for movie in movies:
         movie_name = 'waterwheel' + str(movie_idx)
+        duration = durations[movie_idx]
         movie_idx += 1
-        movie_id = high_control.upload_movie(movie, fps=30, name=movie_name)
-        print(movie_id)
-        movie_ids.append(movie_id)
+        # movie_id = high_control.upload_movie(movie, fps=30, name=movie_name)
+        # print(movie_id)
+        # movie_ids.append((movie_id, duration))
     # high_control.show_movie(BytesIO(frames), fps=60)
     print(movie_ids)
     worked = high_control.show_playlist(movie_ids)

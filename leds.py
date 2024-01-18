@@ -5,7 +5,6 @@ from io import BytesIO
 from Box2D import b2World, b2PolygonShape, b2_staticBody, b2_dynamicBody, b2CircleShape, b2WeldJointDef, b2RevoluteJointDef, b2RayCastCallback
 import pygame
 from pygame.locals import (QUIT, KEYDOWN, K_ESCAPE)
-import time
 import math
 
 # pygame
@@ -17,7 +16,7 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 800, 1200
 
 water_color = (0, 0, 50)
 white_color = (100, 100, 100)
-wood_color = (170, 100, 0)
+wood_color = (140, 50, 0)
 empty_color = (0, 0, 0)
 orange_color = (150, 50, 50)
 # Define the size of the squares
@@ -391,13 +390,13 @@ def main():
     frame_len = high_control.led_bytes * high_control.num_leds
     print(frame_idx)
     print(frame_len)
-    i = 0
-    while True:
-        frame = frame_list[i % len(frame_list)]
-        i += 1
-    # for frame in frame_list:
-        high_control.show_rt_frame(BytesIO(frame))
-        time.sleep(TIME_STEP)
+    high_control.show_movie(BytesIO(frames), fps=60)
+    # i = 0
+    # while True:
+    #     frame = frame_list[i % len(frame_list)]
+    #     i += 1
+    #     high_control.show_rt_frame(BytesIO(frame))
+    #     time.sleep(TIME_STEP)
     # print('made last movie')
     # movies.append(BytesIO(frames))
     # duration = (frame_idx % int(simulation_duration / TIME_STEP)) * TIME_STEP

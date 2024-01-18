@@ -5,18 +5,19 @@ from io import BytesIO
 from Box2D import b2World, b2PolygonShape, b2_staticBody, b2_dynamicBody, b2CircleShape, b2WeldJointDef, b2RevoluteJointDef, b2RayCastCallback
 import pygame
 from pygame.locals import (QUIT, KEYDOWN, K_ESCAPE)
+import time
 import math
 
 # pygame
 PPM = 20.0  # pixels per meter
-TARGET_FPS = 30
+TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 1200
 
 
 water_color = (0, 0, 50)
 white_color = (100, 100, 100)
-wood_color = (100, 100, 0)
+wood_color = (170, 100, 0)
 empty_color = (0, 0, 0)
 orange_color = (150, 50, 50)
 # Define the size of the squares
@@ -235,6 +236,7 @@ def main():
     for i, point in enumerate(points):
         led_lookup[point] = i
     frames = bytearray()
+    frame_list = []
     lowest_y = 100
     wheel_spin = 0
     is_flowing = True
@@ -365,42 +367,53 @@ def main():
         for i in range(num_leds):
             color = led_indexed[i]
             frame.extend(color)
-        high_control.show_rt_frame(BytesIO(frame))
+        frame_list.append(frame)
+        # high_control.show_rt_frame(BytesIO(frame))
         frames.extend(frame)
         frame_idx += 1
 
-        if frame_idx % int(simulation_duration / TIME_STEP) == 0:
-            print('made movie')
-            durations.append(simulation_duration)
-            movie = BytesIO(frames)
-            numframes = movie.seek(0, 2) // (high_control.led_bytes * high_control.num_leds)
-            print(numframes)
-            movie.seek(0)
-            movies.append(movie)
+        # if frame_idx % int(simulation_duration / TIME_STEP) == 0:
+        #     print('made movie')
+        #     durations.append(simulation_duration)
+        #     movie = BytesIO(frames)
+        #     numframes = movie.seek(0, 2) // (high_control.led_bytes * high_control.num_leds)
+        #     print(numframes)
+        #     movie.seek(0)
+        #     movies.append(movie)
             # movie_id = high_control.upload_movie(BytesIO(frames), fps=60, name=str(frame_idx), force=True)
             # movie_ids.append(movie_id)
             # high_control.show_movie(BytesIO(frames), fps=60)
-            frames = bytearray()
+            # frames = bytearray()
         # for i in range(int(simulation_duration / TIME_STEP)):
     # control.set_mode('rt')
     # control.set_movies_new('asg', int(uuid.uuid1()), 'rgb_raw', num_leds, len(frames), 30)
     # high_control.show_movie(BytesIO(frames), fps=60)
-    print('made last movie')
-    movies.append(BytesIO(frames))
-    duration = (frame_idx % int(simulation_duration / TIME_STEP)) * TIME_STEP
-    durations.append(duration)
-    movie_idx = 0
-    for movie in movies:
-        movie_name = 'waterwheel' + str(movie_idx)
-        duration = durations[movie_idx]
-        movie_idx += 1
+    frame_len = high_control.led_bytes * high_control.num_leds
+    print(frame_idx)
+    print(frame_len)
+    i = 0
+    while True:
+        frame = frame_list[i % len(frame_list)]
+        i += 1
+    # for frame in frame_list:
+        high_control.show_rt_frame(BytesIO(frame))
+        time.sleep(TIME_STEP)
+    # print('made last movie')
+    # movies.append(BytesIO(frames))
+    # duration = (frame_idx % int(simulation_duration / TIME_STEP)) * TIME_STEP
+    # durations.append(duration)
+    # movie_idx = 0
+    # for movie in movies:
+    #     movie_name = 'waterwheel' + str(movie_idx)
+    #     duration = durations[movie_idx]
+    #     movie_idx += 1
         # movie_id = high_control.upload_movie(movie, fps=30, name=movie_name)
         # print(movie_id)
         # movie_ids.append((movie_id, duration))
     # high_control.show_movie(BytesIO(frames), fps=60)
-    print(movie_ids)
-    worked = high_control.show_playlist(movie_ids)
-    print(worked)
+    # print(movie_ids)
+    # worked = high_control.show_playlist(movie_ids)
+    # print(worked)
 
     # control.set_mode('movie')
     # control.set_led_movie_config(0, len(frames), num_leds)
